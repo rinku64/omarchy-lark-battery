@@ -1,2 +1,4 @@
-# Hollyland Lark wireless mic receivers: let the logged-in user read battery over hidraw
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", TAG+="uaccess"
+# Hollyland Lark M2 USB receivers (3547:0007, 3547:0008).
+# Grants the user logged in at the seat read/write access to the receiver's
+# HID node only, so the battery can be read without root. Nothing else.
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="3547", ATTRS{idProduct}=="0007|0008", TAG+="uaccess"

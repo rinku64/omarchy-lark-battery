@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -13,7 +14,7 @@ Panel {
   moduleName: "soradev.lark-battery"
   ipcTarget: "soradev.lark-battery"
 
-  readonly property string helper: Qt.resolvedUrl("lark-battery").toString().replace("file://", "")
+  readonly property string helper: decodeURIComponent(Qt.resolvedUrl("lark-battery").toString().replace("file://", ""))
   readonly property int lowThreshold: setting("lowThreshold", 15)
 
   property bool present: false
@@ -33,6 +34,20 @@ Panel {
 
   // A request landing mid-read (a plug event, say) runs once that read ends,
   // so the result always reflects the latest state.
+  // Trust nothing from the helper's output: at most two transmitters, a
+  // boolean and a 0-100 integer each, and a short plain-text error.
+  function sanitize(data) {
+    var list = Array.isArray(data.tx) ? data.tx.slice(0, 2) : []
+    return {
+      present: data.present === true,
+      error: typeof data.error === "string" ? data.error.slice(0, 60) : "",
+      tx: list.map(t => ({
+        connected: !!t && t.connected === true,
+        battery: Math.max(0, Math.min(100, Math.round(Number(t && t.battery) || 0)))
+      }))
+    }
+  }
+
   function refresh() {
     if (proc.running) {
       pending = true
@@ -46,9 +61,10 @@ Panel {
     for (var i = 0; i < tx.length; i++) {
       var key = "tx" + (i + 1)
       var isLow = tx[i].connected && tx[i].battery <= lowThreshold
-      if (isLow && !notified[key] && bar)
-        bar.run("notify-send -u critical -a 'Lark M2' 'Lark M2 battery low' "
-                + bar.shellQuote("Mic " + (i + 1) + " at " + tx[i].battery + "%"))
+      // Arguments go straight to notify-send, never through a shell.
+      if (isLow && !notified[key])
+        Quickshell.execDetached(["/usr/bin/notify-send", "-u", "critical", "-a", "Lark M2",
+                                 "Lark M2 battery low", "Mic " + (i + 1) + " at " + tx[i].battery + "%"])
       next[key] = isLow
     }
     notified = next
@@ -68,13 +84,14 @@ Panel {
     stdout: StdioCollector {
       onStreamFinished: {
         try {
-          var data = JSON.parse(text)
-          root.present = !!data.present
-          root.error = data.error || ""
-          root.tx = data.tx || []
+          var data = root.sanitize(JSON.parse(text))
+          root.present = data.present
+          root.error = data.error
+          root.tx = data.tx
           root.checkLow()
         } catch (e) {
           root.present = false
+          root.tx = []
         }
         if (root.pending) {
           root.pending = false
@@ -94,7 +111,7 @@ Panel {
   // Blocks on the udev socket, so it costs nothing until a hidraw device
   // comes or goes. Debounced: one plug emits several events.
   Process {
-    command: ["udevadm", "monitor", "--udev", "--subsystem-match=hidraw"]
+    command: ["/usr/bin/udevadm", "monitor", "--udev", "--subsystem-match=hidraw"]
     running: true
     stdout: SplitParser {
       onRead: function(line) { if (line.indexOf("(hidraw)") !== -1) hotplug.restart() }
@@ -165,6 +182,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
+              textFormat: Text.PlainText
               text: "Lark M2"
               color: root.bar.foreground
               font.family: root.bar.fontFamily

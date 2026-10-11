@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "soradev.lark-battery",
   "name": "Lark M2 Battery",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "soradev",
   "license": "MIT",
   "description": "Battery level of the Hollyland Lark M2 transmitters, read from the USB receiver. Hidden while the receiver is unplugged.",

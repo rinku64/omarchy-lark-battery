@@ -1,86 +1,126 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S python3 -I
 """Read Hollyland Lark M2 transmitter battery levels from the USB receiver.
 
-Prints one JSON line:
+Prints exactly one JSON line and always exits 0:
   {"present": true, "tx": [{"connected": true, "battery": 87}, ...]}
   {"present": false}                    receiver not plugged in
   {"present": true, "error": "..."}     plugged in but unreadable
 
+Read-only: the only thing ever sent to the receiver is the fixed heartbeat
+query below. Nothing from the command line, environment or network is used.
+
 Protocol (HID report 0x55): 55 AA DD CMD TARGET LEN_H LEN_L PAYLOAD XOR,
-padded to 64 bytes. Heartbeat is CMD 0x10 to the receiver (target 0x40); the
-reply starts BB DD 10 and its payload is [tx1 conn, tx2 conn, tx1 batt, tx2 batt, ...].
+padded to 64 bytes. The reply starts BB DD 10 80 and its payload is
+[tx1 conn, tx2 conn, tx1 batt, tx2 batt, ...].
 """
 
 import glob
 import json
 import os
 import select
+import stat
 import time
 
 VENDOR = 0x3547
+PRODUCTS = {0x0007, 0x0008}  # Lark M2 receivers known to speak this protocol
 REPORT = 0x55
 CMD_HEARTBEAT = 0x10
+SOURCE_RX = 0x80
 # Heartbeat to the receiver, XOR checksum 0x27, padded to the 64-byte report.
 HEARTBEAT = bytes.fromhex("55 AA DD 10 40 00 00 27").ljust(64, b"\0")
+REPORT_SIZE = 64
+ATTEMPTS = 3
+TIMEOUT = 1.0
+
+
+def hid_id(node):
+    """(vendor, product) from a hidraw node's uevent, or None."""
+    try:
+        with open(os.path.join(node, "device", "uevent")) as f:
+            for line in f:
+                if line.startswith("HID_ID="):
+                    _, vendor, product = line.strip().split("=", 1)[1].split(":")
+                    return int(vendor, 16), int(product, 16)
+    except (OSError, ValueError):
+        pass
+    return None
 
 
 def find_hidraw():
     for node in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        ids = hid_id(node)
+        if not ids or ids[0] != VENDOR or ids[1] not in PRODUCTS:
+            continue
         try:
-            with open(os.path.join(node, "device", "uevent")) as f:
-                uevent = f.read()
             with open(os.path.join(node, "device", "report_descriptor"), "rb") as f:
-                desc = f.read()
+                if bytes([0x85, REPORT]) not in f.read():
+                    continue
         except OSError:
             continue
-        hid_id = next((l.split("=", 1)[1] for l in uevent.splitlines() if l.startswith("HID_ID=")), "")
-        parts = hid_id.split(":")
-        if len(parts) == 3 and int(parts[1], 16) == VENDOR and bytes([0x85, REPORT]) in desc:
-            return "/dev/" + os.path.basename(node)
+        path = "/dev/" + os.path.basename(node)
+        try:
+            if stat.S_ISCHR(os.stat(path).st_mode):
+                return path
+        except OSError:
+            pass
     return None
 
 
-def heartbeat(fd, timeout=1.0):
+def heartbeat(fd):
     # Drain stale input reports.
     while select.select([fd], [], [], 0)[0]:
-        os.read(fd, 64)
+        os.read(fd, REPORT_SIZE)
     os.write(fd, HEARTBEAT)
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + TIMEOUT
     while (left := deadline - time.monotonic()) > 0:
         if not select.select([fd], [], [], left)[0]:
             break
-        raw = os.read(fd, 64)
-        if raw and raw[0] == REPORT:
+        raw = os.read(fd, REPORT_SIZE)
+        if raw[:1] == bytes([REPORT]):
             raw = raw[1:]
-        if len(raw) >= 6 and raw[0] == 0xBB and raw[1] == 0xDD and raw[2] == CMD_HEARTBEAT:
-            n = min((raw[4] << 8) | raw[5], len(raw) - 6)
-            return raw[6:6 + n]
+        if len(raw) < 6 or raw[0] != 0xBB or raw[1] != 0xDD:
+            continue
+        if raw[2] != CMD_HEARTBEAT or raw[3] != SOURCE_RX:
+            continue
+        n = (raw[4] << 8) | raw[5]
+        if n < 4 or 6 + n > len(raw):
+            continue
+        return raw[6:6 + n]
     return None
 
 
-def main():
+def read():
     path = find_hidraw()
     if not path:
-        print(json.dumps({"present": False}))
-        return
+        return {"present": False}
     try:
-        fd = os.open(path, os.O_RDWR)
+        fd = os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOCTTY)
     except PermissionError:
-        print(json.dumps({"present": True, "error": f"permission denied on {path} (udev rule missing?)"}))
-        return
+        return {"present": True, "error": "No permission (udev rule missing)"}
+    except OSError:
+        return {"present": False}  # unplugged between lookup and open
+    payload = None
     try:
-        payload = None
-        for _ in range(3):
+        for _ in range(ATTEMPTS):
             payload = heartbeat(fd)
             if payload:
                 break
+    except OSError:
+        return {"present": False}  # unplugged mid-read
     finally:
         os.close(fd)
-    if not payload or len(payload) < 4:
-        print(json.dumps({"present": True, "error": "no heartbeat reply"}))
-        return
-    tx = [{"connected": payload[i] == 1, "battery": payload[2 + i]} for i in (0, 1)]
-    print(json.dumps({"present": True, "tx": tx}))
+    if not payload:
+        return {"present": True, "error": "Receiver not responding"}
+    tx = [{"connected": payload[i] == 1, "battery": min(payload[2 + i], 100)} for i in (0, 1)]
+    return {"present": True, "tx": tx}
+
+
+def main():
+    try:
+        result = read()
+    except Exception:
+        result = {"present": True, "error": "Unexpected error"}
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":
