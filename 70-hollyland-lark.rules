@@ -1,0 +1,2 @@
+# Hollyland Lark wireless mic receivers: let the logged-in user read battery over hidraw
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", TAG+="uaccess"

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "soradev.lark-battery",
+  "name": "Lark M2 Battery",
+  "version": "1.0.0",
+  "author": "soradev",
+  "license": "MIT",
+  "description": "Battery level of the Hollyland Lark M2 transmitters, read from the USB receiver. Hidden while the receiver is unplugged.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Lark M2 Battery",
+    "description": "Mic icon; click opens a panel with Mic 1 / Mic 2 battery, read live.",
+    "category": "Audio",
+    "aliases": [
+      "lark",
+      "lark-battery"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "interval": 600,
+      "lowThreshold": 15
+    },
+    "schema": [
+      {
+        "key": "interval",
+        "type": "integer",
+        "label": "Refresh (s)",
+        "description": "Background check for the low-battery alert while the receiver is plugged in (the panel always reads live).",
+        "min": 60,
+        "max": 3600,
+        "step": 60,
+        "defaultValue": 600
+      },
+      {
+        "key": "lowThreshold",
+        "type": "integer",
+        "label": "Low battery (%)",
+        "description": "Turn red and notify below this level.",
+        "min": 0,
+        "max": 50,
+        "step": 1,
+        "defaultValue": 15
+      }
+    ]
+  }
+}
