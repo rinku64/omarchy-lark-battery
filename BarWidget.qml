@@ -11,8 +11,8 @@ import qs.Ui
 // drives the low-battery alert.
 Panel {
   id: root
-  moduleName: "soradev.lark-battery"
-  ipcTarget: "soradev.lark-battery"
+  moduleName: "rinku.lark-battery"
+  ipcTarget: "rinku.lark-battery"
 
   readonly property string helper: decodeURIComponent(Qt.resolvedUrl("lark-battery").toString().replace("file://", ""))
   readonly property int lowThreshold: setting("lowThreshold", 15)

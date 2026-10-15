@@ -17,20 +17,20 @@ of each transmitter, read live from the USB receiver.
 1. Install the plugin:
 
    ```bash
-   omarchy plugin add https://github.com/soradev64/omarchy-lark-battery.git --enable --yes
+   omarchy plugin add https://github.com/rinku64/omarchy-lark-battery.git --enable --yes
    ```
 
 2. Allow your user to read the receiver. This needs root, so a plugin can't
    do it for you. Read the rule first, it's three lines:
 
    ```bash
-   cat ~/.config/omarchy/plugins/soradev.lark-battery/70-hollyland-lark.rules
+   cat ~/.config/omarchy/plugins/rinku.lark-battery/70-hollyland-lark.rules
    ```
 
    Then install it:
 
    ```bash
-   sudo install -m644 -o root -g root ~/.config/omarchy/plugins/soradev.lark-battery/70-hollyland-lark.rules /etc/udev/rules.d/
+   sudo install -m644 -o root -g root ~/.config/omarchy/plugins/rinku.lark-battery/70-hollyland-lark.rules /etc/udev/rules.d/
    sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=hidraw
    ```
 
@@ -39,11 +39,25 @@ of each transmitter, read live from the USB receiver.
 3. Move the icon wherever you like:
 
    ```bash
-   omarchy bar move soradev.lark-battery --section right
+   omarchy bar move rinku.lark-battery --section right
    ```
 
-Remove it with `omarchy plugin remove soradev.lark-battery` and, if you want,
+Remove it with `omarchy plugin remove rinku.lark-battery` and, if you want,
 `sudo rm /etc/udev/rules.d/70-hollyland-lark.rules`.
+
+### Upgrading from 1.x
+
+Version 2.0.0 only changes the plugin's name: its id went from
+`soradev.lark-battery` to `rinku.lark-battery`, because the author renamed
+their GitHub account. Nothing else changed, and the udev rule is the same, so
+you do not need to install it again. Because the id is different, Omarchy sees
+a new plugin, so:
+
+```bash
+omarchy plugin remove soradev.lark-battery
+omarchy plugin add https://github.com/rinku64/omarchy-lark-battery.git --enable --yes
+omarchy bar move rinku.lark-battery --section right
+```
 
 ## Settings
 
